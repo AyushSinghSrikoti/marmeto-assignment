@@ -291,6 +291,46 @@ The mock courier intentionally behaves unpredictably on shipment creation:
 
 Each courier request times out after 3 seconds. A job has at most 5 total attempts. Retry delays are capped at 30 seconds, including values received through `Retry-After`.
 
+### Watch failures and retries happen
+
+Keep the terminal running `npm run dev` visible. The mock courier logs the outcome of every request, and the worker logs how it handles that outcome.
+
+The following PowerShell block sends 10 new, correctly signed orders. It creates unique IDs automatically, so it can be copied without editing. Since each POST has a 40% chance of `500`, `429`, or delayed response, 10 orders give about a 99.4% chance of showing at least one failure path.
+
+```powershell
+$runId = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+1..10 | ForEach-Object {
+  $orderId = "failure-demo-$runId-$_"
+  $webhookId = "failure-webhook-$runId-$_"
+  $payload = [ordered]@{
+    id = $orderId
+    address = [ordered]@{ name = 'Failure Demo'; city = 'Ghaziabad' }
+    items = @([ordered]@{ sku = 'demo-item'; quantity = 1 })
+  }
+  $body = $payload | ConvertTo-Json -Compress -Depth 10
+  $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+  $secretBytes = [System.Text.Encoding]::UTF8.GetBytes('development-secret')
+  $hmac = [System.Security.Cryptography.HMACSHA256]::new($secretBytes)
+  try { $signature = [Convert]::ToBase64String($hmac.ComputeHash($bodyBytes)) } finally { $hmac.Dispose() }
+  $payloadPath = Join-Path ([System.IO.Path]::GetTempPath()) "$orderId.json"
+  [System.IO.File]::WriteAllBytes($payloadPath, $bodyBytes)
+  try { curl.exe -s -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: $webhookId" -H "X-Shop-Hmac-Sha256: $signature" --data-binary "@$payloadPath" } finally { Remove-Item -LiteralPath $payloadPath -Force }
+  Write-Output ""
+}
+```
+
+Look for these events in the `npm run dev` terminal:
+
+| Log event | Meaning | Expected worker action |
+|---|---|---|
+| `courier_server_error` | Courier returned `500` | Retry with exponential backoff |
+| `courier_rate_limited` | Courier returned `429` | Retry after the `Retry-After` value |
+| `courier_shipment_created_response_delayed` | Shipment was created but the response is delayed | Request times out; next attempt performs GET |
+| `courier_shipments_looked_up` with `count: 1` | GET found the shipment created before the timeout | Save that shipment without another POST |
+| `shipment_confirmed` with `reconciled: true` | Worker recovered an uncertain shipment | Complete the job |
+
+Because the courier is random, a specific run can still produce mostly successful responses. The database inspection commands below show the final status and attempt count for every order.
+
 ## How duplicate shipments are avoided
 
 For a new order, the worker sends POST directly. Immediately before POST, it records the order as `unknown`, meaning a courier request may now be in progress.

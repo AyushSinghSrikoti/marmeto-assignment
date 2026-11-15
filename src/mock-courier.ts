@@ -35,11 +35,13 @@ mockCourierApp.post("/shipments", (request, response) => {
   const outcome = Math.random();
 
   if (outcome < 0.2) {
+    console.log(JSON.stringify({ event: "courier_server_error", reference }));
     response.status(500).json({ error: "Courier service failed" });
     return;
   }
 
   if (outcome < 0.3) {
+    console.log(JSON.stringify({ event: "courier_rate_limited", reference }));
     response.set("Retry-After", "2");
     response.status(429).json({ error: "Too many requests" });
     return;
@@ -55,6 +57,13 @@ mockCourierApp.post("/shipments", (request, response) => {
   shipments.push(shipment);
 
   if (outcome < 0.4) {
+    console.log(
+      JSON.stringify({
+        event: "courier_shipment_created_response_delayed",
+        reference,
+        shipmentId: shipment.shipmentId,
+      }),
+    );
     setTimeout(() => {
       if (!response.headersSent) {
         response.status(201).json({
@@ -66,6 +75,13 @@ mockCourierApp.post("/shipments", (request, response) => {
     return;
   }
 
+  console.log(
+    JSON.stringify({
+      event: "courier_shipment_created",
+      reference,
+      shipmentId: shipment.shipmentId,
+    }),
+  );
   response.status(201).json({
     shipmentId: shipment.shipmentId,
     reference: shipment.reference,
@@ -80,14 +96,21 @@ mockCourierApp.get("/shipments", (request, response) => {
     return;
   }
 
-  response.status(200).json(
-    shipments
-      .filter((shipment) => shipment.reference === reference)
-      .map(({ shipmentId, reference: shipmentReference }) => ({
-        shipmentId,
-        reference: shipmentReference,
-      })),
+  const matchingShipments = shipments
+    .filter((shipment) => shipment.reference === reference)
+    .map(({ shipmentId, reference: shipmentReference }) => ({
+      shipmentId,
+      reference: shipmentReference,
+    }));
+
+  console.log(
+    JSON.stringify({
+      event: "courier_shipments_looked_up",
+      reference,
+      count: matchingShipments.length,
+    }),
   );
+  response.status(200).json(matchingShipments);
 });
 
 mockCourierApp.listen(config.mockCourierPort, () => {
