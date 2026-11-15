@@ -280,7 +280,7 @@ If shipment creation has completed, the courier returns:
 
 ## Failure behaviour
 
-The mock courier intentionally behaves unpredictably on shipment creation:
+The mock courier uses a repeating 10-POST sequence. This keeps the assignment's requested percentages while making every failure type easy to observe:
 
 | Outcome | Probability | Worker behaviour |
 |---|---:|---|
@@ -295,7 +295,7 @@ Each courier request times out after 3 seconds. A job has at most 5 total attemp
 
 Keep the terminal running `npm run dev` visible. The mock courier logs the outcome of every request, and the worker logs how it handles that outcome.
 
-The following PowerShell block sends 10 new, correctly signed orders. It creates unique IDs automatically, so it can be copied without editing. Since each POST has a 40% chance of `500`, `429`, or delayed response, 10 orders give about a 99.4% chance of showing at least one failure path.
+The following PowerShell block sends 10 new, correctly signed orders. It creates unique IDs automatically, so it can be copied without editing. A fresh mock courier process will produce all three failure types during the repeating 10-POST sequence.
 
 ```powershell
 $runId = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
@@ -329,7 +329,7 @@ Look for these events in the `npm run dev` terminal:
 | `courier_shipments_looked_up` with `count: 1` | GET found the shipment created before the timeout | Save that shipment without another POST |
 | `shipment_confirmed` with `reconciled: true` | Worker recovered an uncertain shipment | Complete the job |
 
-Because the courier is random, a specific run can still produce mostly successful responses. The database inspection commands below show the final status and attempt count for every order.
+Retries also consume positions in the sequence, which mirrors several orders sharing the same courier. The database inspection commands below show the final status and attempt count for every order.
 
 ## How duplicate shipments are avoided
 

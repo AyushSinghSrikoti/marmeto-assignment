@@ -11,8 +11,30 @@ interface Shipment {
   items: unknown[];
 }
 
+type CourierOutcome = "success" | "server-error" | "rate-limit" | "timeout";
+
+const outcomeSequence: CourierOutcome[] = [
+  "success",
+  "server-error",
+  "success",
+  "rate-limit",
+  "success",
+  "timeout",
+  "success",
+  "server-error",
+  "success",
+  "success",
+];
+
 export const mockCourierApp = express();
 const shipments: Shipment[] = [];
+let nextOutcomeIndex = 0;
+
+function getNextOutcome(): CourierOutcome {
+  const outcome = outcomeSequence[nextOutcomeIndex];
+  nextOutcomeIndex = (nextOutcomeIndex + 1) % outcomeSequence.length;
+  return outcome ?? "success";
+}
 
 mockCourierApp.disable("x-powered-by");
 mockCourierApp.use(express.json());
@@ -32,15 +54,15 @@ mockCourierApp.post("/shipments", (request, response) => {
     return;
   }
 
-  const outcome = Math.random();
+  const outcome = getNextOutcome();
 
-  if (outcome < 0.2) {
+  if (outcome === "server-error") {
     console.log(JSON.stringify({ event: "courier_server_error", reference }));
     response.status(500).json({ error: "Courier service failed" });
     return;
   }
 
-  if (outcome < 0.3) {
+  if (outcome === "rate-limit") {
     console.log(JSON.stringify({ event: "courier_rate_limited", reference }));
     response.set("Retry-After", "2");
     response.status(429).json({ error: "Too many requests" });
@@ -56,7 +78,7 @@ mockCourierApp.post("/shipments", (request, response) => {
 
   shipments.push(shipment);
 
-  if (outcome < 0.4) {
+  if (outcome === "timeout") {
     console.log(
       JSON.stringify({
         event: "courier_shipment_created_response_delayed",
