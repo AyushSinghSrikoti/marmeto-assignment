@@ -67,7 +67,8 @@ The signature below is already calculated for the exact JSON body and the defaul
 Windows PowerShell:
 
 ```powershell
-curl.exe -i -w "\nResponse time: %{time_total}s\n" -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: webhook-1001" -H "X-Shop-Hmac-Sha256: GpbeqlDakjd5+BxSkWNAjPkuyGMiA5cJx3kn+yCSys0=" --data-raw '{"id":"order-1001","address":{"name":"Ayush Singh","line1":"123 Test Street","city":"Ghaziabad","postalCode":"201010","country":"India"},"items":[{"sku":"shoe-001","quantity":1}]}'
+$body = '{"id":"order-1001","address":{"name":"Ayush Singh","line1":"123 Test Street","city":"Ghaziabad","postalCode":"201010","country":"India"},"items":[{"sku":"shoe-001","quantity":1}]}'
+curl.exe -i -w "\nResponse time: %{time_total}s\n" -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: webhook-1001" -H "X-Shop-Hmac-Sha256: GpbeqlDakjd5+BxSkWNAjPkuyGMiA5cJx3kn+yCSys0=" --data-raw $body
 ```
 
 macOS or Linux:
@@ -91,7 +92,8 @@ Run the same command from step 2 again. Alternatively, copy the matching command
 Windows PowerShell:
 
 ```powershell
-curl.exe -i -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: webhook-1001" -H "X-Shop-Hmac-Sha256: GpbeqlDakjd5+BxSkWNAjPkuyGMiA5cJx3kn+yCSys0=" --data-raw '{"id":"order-1001","address":{"name":"Ayush Singh","line1":"123 Test Street","city":"Ghaziabad","postalCode":"201010","country":"India"},"items":[{"sku":"shoe-001","quantity":1}]}'
+$body = '{"id":"order-1001","address":{"name":"Ayush Singh","line1":"123 Test Street","city":"Ghaziabad","postalCode":"201010","country":"India"},"items":[{"sku":"shoe-001","quantity":1}]}'
+curl.exe -i -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: webhook-1001" -H "X-Shop-Hmac-Sha256: GpbeqlDakjd5+BxSkWNAjPkuyGMiA5cJx3kn+yCSys0=" --data-raw $body
 ```
 
 macOS or Linux:
@@ -113,7 +115,8 @@ The duplicate increases the webhook delivery count but does not create another o
 Windows PowerShell:
 
 ```powershell
-curl.exe -i -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: invalid-webhook" -H "X-Shop-Hmac-Sha256: invalid-signature" --data-raw '{"id":"invalid-order","address":{"city":"Ghaziabad"},"items":[]}'
+$body = '{"id":"invalid-order","address":{"city":"Ghaziabad"},"items":[]}'
+curl.exe -i -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: invalid-webhook" -H "X-Shop-Hmac-Sha256: invalid-signature" --data-raw $body
 ```
 
 macOS or Linux:
