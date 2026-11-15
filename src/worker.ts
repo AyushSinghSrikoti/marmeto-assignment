@@ -1,16 +1,25 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  CourierRequestError,
+  createShipment,
+  findShipments,
+} from "#/courier-client";
 import { database, initializeDatabase } from "#/database";
 import {
   claimNextJob,
-  completeJob,
+  confirmShipment,
   failJob,
+  markShipmentAttemptUnknown,
   recoverStaleJobs,
+  retryJob,
   type ClaimedJob,
 } from "#/job-store";
 
 const pollIntervalMs = 1_000;
 const leaseTimeoutSeconds = 30;
+const maximumAttempts = 5;
+const maximumRetryDelaySeconds = 30;
 const workerId = `shipment-worker-${process.pid}-${randomUUID()}`;
 
 let running = true;
@@ -23,18 +32,73 @@ function delay(milliseconds: number): Promise<void> {
 async function processJob(job: ClaimedJob): Promise<void> {
   const address = JSON.parse(job.addressJson) as Record<string, unknown>;
   const items = JSON.parse(job.itemsJson) as unknown[];
+  let shipment =
+    job.shipmentStatus === "confirmed" && job.shipmentId
+      ? { shipmentId: job.shipmentId, reference: job.orderId }
+      : undefined;
+  let reconciled = false;
+
+  if (!shipment && job.shipmentStatus === "unknown") {
+    const existingShipments = await findShipments(job.orderId);
+
+    if (existingShipments.length > 1) {
+      console.warn(
+        `Courier returned ${existingShipments.length} shipments for order ${job.orderId}`,
+      );
+    }
+
+    shipment = existingShipments[0];
+    reconciled = shipment !== undefined;
+  }
+
+  if (!shipment) {
+    markShipmentAttemptUnknown(job.id, workerId, job.orderId);
+    shipment = await createShipment({
+      reference: job.orderId,
+      address,
+      items,
+    });
+  }
+
+  confirmShipment(
+    job.id,
+    workerId,
+    job.orderId,
+    shipment.shipmentId,
+  );
 
   console.log(
     JSON.stringify({
-      event: "shipment_job_processed",
+      event: "shipment_confirmed",
       workerId,
       jobId: job.id,
       orderId: job.orderId,
       attempt: job.attempt,
-      address,
-      items,
+      shipmentId: shipment.shipmentId,
+      reconciled,
     }),
   );
+}
+
+function retryDelaySeconds(job: ClaimedJob, error: unknown): number {
+  if (
+    error instanceof CourierRequestError &&
+    error.retryAfterSeconds !== undefined
+  ) {
+    return Math.min(error.retryAfterSeconds, maximumRetryDelaySeconds);
+  }
+
+  return Math.min(2 ** (job.attempt - 1), maximumRetryDelaySeconds);
+}
+
+function shipmentStatusAfterError(
+  error: unknown,
+): "pending" | "unknown" {
+  if (error instanceof CourierRequestError && !error.outcomeUncertain) {
+    return "pending";
+  }
+
+  return "unknown";
 }
 
 async function run(): Promise<void> {
@@ -63,10 +127,29 @@ async function run(): Promise<void> {
 
     try {
       await processJob(job);
-      completeJob(job.id, workerId);
     } catch (error) {
-      failJob(job.id, workerId, error);
-      console.error(`Shipment job ${job.id} failed`, error);
+      if (job.attempt >= maximumAttempts) {
+        failJob(job.id, workerId, job.orderId, error);
+        console.error(
+          `Shipment job ${job.id} parked after ${job.attempt} attempts`,
+          error,
+        );
+        continue;
+      }
+
+      const delaySeconds = retryDelaySeconds(job, error);
+      retryJob(
+        job.id,
+        workerId,
+        job.orderId,
+        error,
+        delaySeconds,
+        shipmentStatusAfterError(error),
+      );
+      console.error(
+        `Shipment job ${job.id} will retry in ${delaySeconds} second(s)`,
+        error,
+      );
     }
   }
 
