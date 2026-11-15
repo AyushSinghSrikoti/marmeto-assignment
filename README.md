@@ -36,6 +36,34 @@ The processes run on:
 
 The default values work without creating a `.env` file.
 
+## Start again with an empty database
+
+SQLite data remains on disk when the application stops. The mock courier is different: it stores shipments only in memory, so stopping `npm run dev` clears all mock courier shipments.
+
+For a completely clean test, first stop `npm run dev` with `Ctrl+C`. Then delete only the SQLite database files.
+
+Windows PowerShell:
+
+```powershell
+Remove-Item -LiteralPath ".\storage\app.db", ".\storage\app.db-wal", ".\storage\app.db-shm" -Force -ErrorAction SilentlyContinue
+```
+
+macOS or Linux:
+
+```bash
+rm -f ./storage/app.db ./storage/app.db-wal ./storage/app.db-shm
+```
+
+Start the application again:
+
+```bash
+npm run dev
+```
+
+The application creates a new empty database automatically. Do not delete the whole `storage` directory.
+
+If only the mock courier restarts, its in-memory shipment list becomes empty while confirmed shipments remain in SQLite. This is expected for this local mock. Restarting all processes and clearing SQLite as shown above gives both systems a clean state.
+
 ## Quick test
 
 Open another terminal while `npm run dev` is running.
@@ -140,6 +168,64 @@ HTTP/1.1 401 Unauthorized
 ```json
 {"error":"Invalid webhook signature"}
 ```
+
+## Send a custom order
+
+An HMAC signature covers the exact request body. If the order ID, address, items, spacing, or any other body content changes, the signature must be calculated again.
+
+The examples below calculate the signature automatically. To create another order, change `order-2001` and `webhook-2001`. You can also change any address or item field without manually calculating a new signature.
+
+Windows PowerShell:
+
+```powershell
+$orderId = 'order-2001'
+$webhookId = 'webhook-2001'
+$payload = [ordered]@{
+  id = $orderId
+  address = [ordered]@{
+    name = 'Test Customer'
+    line1 = '456 Test Road'
+    city = 'Ghaziabad'
+    postalCode = '201010'
+    country = 'India'
+  }
+  items = @(
+    [ordered]@{
+      sku = 'shirt-001'
+      quantity = 2
+    }
+  )
+}
+$body = $payload | ConvertTo-Json -Compress -Depth 10
+$bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($body)
+$secretBytes = [System.Text.Encoding]::UTF8.GetBytes('development-secret')
+$hmac = [System.Security.Cryptography.HMACSHA256]::new($secretBytes)
+try { $signature = [Convert]::ToBase64String($hmac.ComputeHash($bodyBytes)) } finally { $hmac.Dispose() }
+$payloadPath = Join-Path ([System.IO.Path]::GetTempPath()) "$orderId.json"
+[System.IO.File]::WriteAllBytes($payloadPath, $bodyBytes)
+try { curl.exe -i -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: $webhookId" -H "X-Shop-Hmac-Sha256: $signature" --data-binary "@$payloadPath" } finally { Remove-Item -LiteralPath $payloadPath -Force }
+```
+
+macOS or Linux:
+
+```bash
+order_id='order-2001'
+webhook_id='webhook-2001'
+body='{"id":"order-2001","address":{"name":"Test Customer","line1":"456 Test Road","city":"Ghaziabad","postalCode":"201010","country":"India"},"items":[{"sku":"shirt-001","quantity":2}]}'
+signature=$(node -e "const crypto=require('node:crypto'); process.stdout.write(crypto.createHmac('sha256','development-secret').update(process.argv[1]).digest('base64'))" "$body")
+curl -i -X POST http://localhost:3000/webhooks/orders-create -H "Content-Type: application/json" -H "X-Shop-Webhook-Id: $webhook_id" -H "X-Shop-Hmac-Sha256: $signature" --data-raw "$body"
+```
+
+Use these rules when changing the request:
+
+| What you want to test | What to change |
+|---|---|
+| Duplicate delivery | Change nothing; send the same body and webhook ID again |
+| Same order through another webhook delivery | Keep the same order ID and body, but change only the webhook ID |
+| Completely new order | Change both the order ID and webhook ID |
+| Different customer or products | Change the address or items; the example recalculates the signature automatically |
+
+Order IDs and webhook IDs must be unique for new records. Changing only the webhook ID does not create a new shipment when the order ID already exists.
 
 ## Inspect the result
 

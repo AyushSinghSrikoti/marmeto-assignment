@@ -12,13 +12,18 @@ interface CreateShipmentInput {
 }
 
 export class CourierRequestError extends Error {
+  readonly retryAfterSeconds: number | undefined;
+  readonly outcomeUncertain: boolean;
+
   constructor(
     message: string,
-    readonly retryAfterSeconds?: number,
-    readonly outcomeUncertain = true,
+    retryAfterSeconds?: number,
+    outcomeUncertain = true,
   ) {
     super(message);
     this.name = "CourierRequestError";
+    this.retryAfterSeconds = retryAfterSeconds;
+    this.outcomeUncertain = outcomeUncertain;
   }
 }
 
