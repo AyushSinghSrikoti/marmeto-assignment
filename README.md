@@ -364,6 +364,24 @@ For each selected record, it performs GET only:
 
 The reconciler never creates a shipment.
 
+## Inspect and replay failed jobs
+
+List every parked job:
+
+```bash
+npm run jobs:failed
+```
+
+The output includes the job ID, order ID, attempts, reconciliation attempts, last error, and update time.
+
+Replay one failed job by its numeric ID:
+
+```bash
+npm run job:replay -- 12
+```
+
+Replay resets the bounded attempt counters and queues the job again. It changes the order to `unknown`, so the worker performs courier GET before it can send another POST. Jobs that are not failed, do not exist, or are currently locked cannot be replayed.
+
 ## Architecture
 
 ```text
@@ -425,6 +443,7 @@ If `WEBHOOK_SECRET` changes, the precomputed sample signature will no longer be 
 ## Production build
 
 ```bash
+npm test
 npm run typecheck
 npm run build
 npm start

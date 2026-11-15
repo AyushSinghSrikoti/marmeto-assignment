@@ -21,7 +21,10 @@
     "start:worker": "node dist/worker.js",
     "start:reconciler": "node dist/reconciler.js",
     "start:courier": "node dist/mock-courier.js",
-    "typecheck": "tsc --noEmit"
+    "jobs:failed": "node --conditions=development --experimental-strip-types src/job-admin.ts list",
+    "job:replay": "node --conditions=development --experimental-strip-types src/job-admin.ts replay",
+    "test": "node --test --test-concurrency=1 --conditions=development --experimental-strip-types tests/core.test.ts",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
   },
   "engines": {
     "node": ">=22.13.0"
