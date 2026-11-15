@@ -10,9 +10,13 @@
     }
   },
   "scripts": {
-    "dev": "node --watch --conditions=development --experimental-strip-types src/server.ts",
+    "dev": "concurrently --kill-others-on-fail --names api,worker \"npm:dev:api\" \"npm:dev:worker\"",
+    "dev:api": "node --watch --conditions=development --experimental-strip-types src/server.ts",
+    "dev:worker": "node --watch --conditions=development --experimental-strip-types src/worker.ts",
     "build": "tsc",
-    "start": "node dist/server.js",
+    "start": "concurrently --kill-others-on-fail --names api,worker \"npm:start:api\" \"npm:start:worker\"",
+    "start:api": "node dist/server.js",
+    "start:worker": "node dist/worker.js",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
@@ -20,12 +24,12 @@
   },
   "dependencies": {
     "dotenv": "^18.0.10",
-    "express": "^5.3.0"
+    "express": "^5.3.0",
+    "concurrently": "^10.0.7"
   },
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^26.6.6",
-    "concurrently": "^10.0.7",
     "typescript": "^7.0.2"
   }
 }

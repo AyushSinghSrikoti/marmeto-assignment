@@ -17,11 +17,17 @@ export function acceptOrder(
   database.exec("BEGIN IMMEDIATE");
 
   try {
-    const existingWebhook = database
-      .prepare("SELECT webhook_id FROM webhook_events WHERE webhook_id = ?")
-      .get(webhookId);
+    const repeatedDelivery = database
+      .prepare(`
+        UPDATE webhook_events
+        SET
+          delivery_count = delivery_count + 1,
+          last_received_at = CURRENT_TIMESTAMP
+        WHERE webhook_id = ?
+      `)
+      .run(webhookId);
 
-    if (existingWebhook) {
+    if (Number(repeatedDelivery.changes) > 0) {
       database.exec("COMMIT");
       return { duplicate: true };
     }
@@ -40,8 +46,12 @@ export function acceptOrder(
 
     database
       .prepare(`
-        INSERT INTO webhook_events (webhook_id, order_id)
-        VALUES (?, ?)
+        INSERT INTO webhook_events (
+          webhook_id,
+          order_id,
+          last_received_at
+        )
+        VALUES (?, ?, CURRENT_TIMESTAMP)
       `)
       .run(webhookId, order.orderId);
 

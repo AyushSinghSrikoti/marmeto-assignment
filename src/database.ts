@@ -29,7 +29,9 @@ export function initializeDatabase(): void {
     CREATE TABLE IF NOT EXISTS webhook_events (
       webhook_id TEXT PRIMARY KEY,
       order_id TEXT NOT NULL,
+      delivery_count INTEGER NOT NULL DEFAULT 1 CHECK (delivery_count >= 1),
       received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      last_received_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (order_id) REFERENCES orders(order_id) ON DELETE CASCADE
     );
 
@@ -51,4 +53,29 @@ export function initializeDatabase(): void {
     CREATE INDEX IF NOT EXISTS jobs_due_idx
       ON jobs(status, next_attempt_at);
   `);
+
+  const webhookColumns = database
+    .prepare("PRAGMA table_info(webhook_events)")
+    .all() as Array<{ name: string }>;
+  const webhookColumnNames = new Set(
+    webhookColumns.map((column) => column.name),
+  );
+
+  if (!webhookColumnNames.has("delivery_count")) {
+    database.exec(`
+      ALTER TABLE webhook_events
+      ADD COLUMN delivery_count INTEGER NOT NULL DEFAULT 1;
+    `);
+  }
+
+  if (!webhookColumnNames.has("last_received_at")) {
+    database.exec(`
+      ALTER TABLE webhook_events
+      ADD COLUMN last_received_at TEXT;
+
+      UPDATE webhook_events
+      SET last_received_at = received_at
+      WHERE last_received_at IS NULL;
+    `);
+  }
 }
