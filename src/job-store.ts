@@ -244,6 +244,7 @@ export function failJob(
   workerId: string,
   orderId: string,
   error: unknown,
+  shipmentStatus: "unknown" | "failed",
 ): void {
   const message = errorMessage(error);
 
@@ -258,13 +259,18 @@ export function failJob(
           locked_at = NULL,
           locked_by = NULL,
           next_attempt_at = NULL,
+          reconciliation_attempts = 0,
+          next_reconciliation_at = CASE
+            WHEN ? = 'unknown' THEN datetime('now', '+5 seconds')
+            ELSE NULL
+          END,
           last_error = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE id = ?
           AND status = 'processing'
           AND locked_by = ?
       `)
-      .run(message, jobId, workerId);
+      .run(shipmentStatus, message, jobId, workerId);
 
     if (Number(jobResult.changes) !== 1) {
       throw new Error(`Worker ${workerId} no longer owns job ${jobId}`);
@@ -274,12 +280,12 @@ export function failJob(
       .prepare(`
         UPDATE orders
         SET
-          shipment_status = 'failed',
+          shipment_status = ?,
           last_error = ?,
           updated_at = CURRENT_TIMESTAMP
         WHERE order_id = ?
       `)
-      .run(message, orderId);
+      .run(shipmentStatus, message, orderId);
 
     database.exec("COMMIT");
   } catch (failureError) {

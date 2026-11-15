@@ -44,6 +44,9 @@ export function initializeDatabase(): void {
       next_attempt_at TEXT,
       locked_at TEXT,
       locked_by TEXT,
+      reconciliation_attempts INTEGER NOT NULL DEFAULT 0
+        CHECK (reconciliation_attempts >= 0),
+      next_reconciliation_at TEXT,
       last_error TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -54,28 +57,62 @@ export function initializeDatabase(): void {
       ON jobs(status, next_attempt_at);
   `);
 
-  const webhookColumns = database
-    .prepare("PRAGMA table_info(webhook_events)")
-    .all() as Array<{ name: string }>;
-  const webhookColumnNames = new Set(
-    webhookColumns.map((column) => column.name),
-  );
+  database.exec("BEGIN IMMEDIATE");
 
-  if (!webhookColumnNames.has("delivery_count")) {
+  try {
+    const webhookColumns = database
+      .prepare("PRAGMA table_info(webhook_events)")
+      .all() as Array<{ name: string }>;
+    const webhookColumnNames = new Set(
+      webhookColumns.map((column) => column.name),
+    );
+
+    if (!webhookColumnNames.has("delivery_count")) {
+      database.exec(`
+        ALTER TABLE webhook_events
+        ADD COLUMN delivery_count INTEGER NOT NULL DEFAULT 1;
+      `);
+    }
+
+    if (!webhookColumnNames.has("last_received_at")) {
+      database.exec(`
+        ALTER TABLE webhook_events
+        ADD COLUMN last_received_at TEXT;
+
+        UPDATE webhook_events
+        SET last_received_at = received_at
+        WHERE last_received_at IS NULL;
+      `);
+    }
+
+    const jobColumns = database
+      .prepare("PRAGMA table_info(jobs)")
+      .all() as Array<{ name: string }>;
+    const jobColumnNames = new Set(jobColumns.map((column) => column.name));
+
+    if (!jobColumnNames.has("reconciliation_attempts")) {
+      database.exec(`
+        ALTER TABLE jobs
+        ADD COLUMN reconciliation_attempts INTEGER NOT NULL DEFAULT 0
+          CHECK (reconciliation_attempts >= 0);
+      `);
+    }
+
+    if (!jobColumnNames.has("next_reconciliation_at")) {
+      database.exec(`
+        ALTER TABLE jobs
+        ADD COLUMN next_reconciliation_at TEXT;
+      `);
+    }
+
     database.exec(`
-      ALTER TABLE webhook_events
-      ADD COLUMN delivery_count INTEGER NOT NULL DEFAULT 1;
+      CREATE INDEX IF NOT EXISTS jobs_reconciliation_idx
+        ON jobs(status, reconciliation_attempts, next_reconciliation_at);
     `);
-  }
 
-  if (!webhookColumnNames.has("last_received_at")) {
-    database.exec(`
-      ALTER TABLE webhook_events
-      ADD COLUMN last_received_at TEXT;
-
-      UPDATE webhook_events
-      SET last_received_at = received_at
-      WHERE last_received_at IS NULL;
-    `);
+    database.exec("COMMIT");
+  } catch (error) {
+    database.exec("ROLLBACK");
+    throw error;
   }
 }

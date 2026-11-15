@@ -129,7 +129,13 @@ async function run(): Promise<void> {
       await processJob(job);
     } catch (error) {
       if (job.attempt >= maximumAttempts) {
-        failJob(job.id, workerId, job.orderId, error);
+        failJob(
+          job.id,
+          workerId,
+          job.orderId,
+          error,
+          shipmentStatusAfterError(error) === "unknown" ? "unknown" : "failed",
+        );
         console.error(
           `Shipment job ${job.id} parked after ${job.attempt} attempts`,
           error,

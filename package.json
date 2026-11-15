@@ -10,14 +10,16 @@
     }
   },
   "scripts": {
-    "dev": "concurrently --kill-others-on-fail --names api,worker,courier \"npm:dev:api\" \"npm:dev:worker\" \"npm:dev:courier\"",
+    "dev": "concurrently --kill-others-on-fail --names api,worker,reconciler,courier \"npm:dev:api\" \"npm:dev:worker\" \"npm:dev:reconciler\" \"npm:dev:courier\"",
     "dev:api": "node --watch --conditions=development --experimental-strip-types src/server.ts",
     "dev:worker": "node --watch --conditions=development --experimental-strip-types src/worker.ts",
+    "dev:reconciler": "node --watch --conditions=development --experimental-strip-types src/reconciler.ts",
     "dev:courier": "node --watch --conditions=development --experimental-strip-types src/mock-courier.ts",
     "build": "tsc",
-    "start": "concurrently --kill-others-on-fail --names api,worker,courier \"npm:start:api\" \"npm:start:worker\" \"npm:start:courier\"",
+    "start": "concurrently --kill-others-on-fail --names api,worker,reconciler,courier \"npm:start:api\" \"npm:start:worker\" \"npm:start:reconciler\" \"npm:start:courier\"",
     "start:api": "node dist/server.js",
     "start:worker": "node dist/worker.js",
+    "start:reconciler": "node dist/reconciler.js",
     "start:courier": "node dist/mock-courier.js",
     "typecheck": "tsc --noEmit"
   },
